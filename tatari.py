@@ -3,6 +3,7 @@ import argparse
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.dates as mdates
+import matplotlib.axes as ax
 
 
 # obtain paths to CSVs from command line
@@ -31,47 +32,39 @@ def cleanDataFrames(path_spot_data, path_web_data):
     return web_data, spot_data, web_direct
 
 
-def generatePlot(datetime_start, datetime_end, dataframe):
-    ''' takes a datetime interval (strings) and a dataframe and returns plot of website visits in that interval '''
+def generateVisitsPlot(datetime_start, datetime_end, dataframe, fig_name):
+    ''' takes a datetime start & end (strings), a dataframe, and figure name and returns plot of website visits in that interval called fig_name '''
     sns.set(rc={'figure.figsize':(11, 4)})
-    plot = web_direct.plot(x='datetime',y='value')
-    plot.set_xlim(pd.Timestamp('2017-11-12 23:23:00+00'), pd.Timestamp('2017-11-12 23:50:00+00'))
-    plot.set_xlabel('datetime: [date] [hour]:[minute]')
-    plot.set_ylabel('value')
-    plot.set_title('Website visits (direct) on 11/12/2017')
-    plot.xaxis.set_minor_locator(mdates.HourLocator())
-    plot.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    plot.set_ylim(0,500)
-    plt.show()
-
+    plot = dataframe.plot(x='datetime',y='value')
+    plot.set_xlim(pd.Timestamp(datetime_start), pd.Timestamp(datetime_end))
+    if (pd.Timestamp(datetime_end) - pd.Timestamp(datetime_start)).days == 0:
+        plot.set_xlabel('Datetime [hour]:[minute]')
+        plot.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    else:
+        plot.set_xlabel('Datetime [date]:[hour]:[minute]')
+        plot.xaxis.set_major_formatter(mdates.DateFormatter('%D:%H:%M'))
+    plot.set_ylabel('Number of Visits')
+    plot.set_title('Website Visits (Traffic Source = Direct) From {} UTC'.format(datetime_start + ' to ' + datetime_end))
+    max_y_interval = dataframe[(dataframe.datetime >= pd.Timestamp(datetime_start)) & (dataframe.datetime <= pd.Timestamp(datetime_end))]['value'].max()
+    plot.set_ylim(0,(max_y_interval + 50))
+    plt.savefig(('{}.png').format(fig_name))
+    return plot
 
 def main():
+    # retrieve clean dataframes
     web_data, spot_data, web_direct = cleanDataFrames(path_spot_data,path_web_data)
-    #creative_ids = spot_data.creative_id.unique()
-    #programs = spot_data.program.unique()
-    #network_codes = spot_data.network_code.unique()
-    #rotations = spot_data.rotation.unique()
-    #rotation_days = spot_data.rotation_days.unique()
-    #rotation_start = spot_data.rotation_start.unique()
-    #rotation_end = spot_data.rotation_end.unique()
-    sns.set(rc={'figure.figsize':(11, 4)})
-    #x_ax = pd.Series(web_direct['datetime'])
-    #y_ax = pd.Series(web_direct['value'])
-    plot = web_direct.plot(x='datetime',y='value')
-    plot.set_xlim(pd.Timestamp('2017-11-12 23:23:00+00'), pd.Timestamp('2017-11-12 23:50:00+00'))
-    plot.set_xlabel('datetime: [date] [hour]:[minute]')
-    plot.set_ylabel('value')
-    plot.set_title('Website visits (direct) on 11/12/2017')
-    plot.xaxis.set_minor_locator(mdates.HourLocator())
-    plot.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-
-    plot.set_ylim(0,500)
+    # create dictionary {creative_id: spend}
+    spend_per_creative = (spot_data.groupby('creative_id')['spend'].agg('sum')).to_dict()
+    for key in spend_per_creative:
+        spend_per_creative[key] = round(spend_per_creative[key],2)
+    visits_plot = generateVisitsPlot('2017-11-13 02:00:00+00','2017-11-13 02:20:00+00',web_direct,'visits')
+    visits_plot.vlines('2017-11-13 02:12:11+00',0,1500, color='r', label='Spot at 2017-11-13 02:12:11+00')
+    visits_plot.vlines('2017-11-13 02:13:12+00',0,1500, color='r', label='Spot at 2017-11-13 02:13:12+00')
+    plt.legend()
     plt.show()
-    #print web_direct.loc['2017-10-16'].head(5)
-    #print web_data['date'].head(5)
-    #print web_direct.head(5)
-    #plt.savefig('.png')
     
 
+    # 2017-11-12 18:12:11-08:00
+    # 2017-11-12 18:13:12-08:00
 if __name__ == '__main__':
     main()
