@@ -34,11 +34,14 @@ def cleanDataFrames(path_spot_data, path_web_data):
 
 def spotsInInterval(datetime_start, datetime_end, spot_df):
     ''' takes start time, end time (as strings) and spot data DF; returns DF & list of tuples like (datetime, creative_id) aired during that interval '''
-    spots_in_interval = spot_df[(spot_df.datetime >= pd.Timestamp(datetime_start)) & (spot_df.datetime <= pd.Timestamp(datetime_end))][['datetime', 'creative_id']]
+    spots_datetimes_df = spot_df[(spot_df.datetime >= pd.Timestamp(datetime_start)) & (spot_df.datetime <= pd.Timestamp(datetime_end))][['datetime', 'creative_id']]
     spots_datetimes_list = []
-    for index, rows in spots_aired.iterrows():
+    for index, rows in spots_datetimes_df.iterrows():
         spots_datetimes_list.append((rows.datetime,rows.creative_id))
-    return spots_datetimes_df, spots_datetimes_list
+    if spots_datetimes_df.empty:
+        return None
+    else:
+        return spots_datetimes_df, spots_datetimes_list
 
 
 def generateVisitsPlot(datetime_start, datetime_end, web_direct_df, spot_df, fig_name):
@@ -68,28 +71,48 @@ def generateVisitsPlot(datetime_start, datetime_end, web_direct_df, spot_df, fig
     return plot
 
 
-def calcBaseline(web_direct_df, spot_df, datetime, creative_id):
+def calcBaselineLift(web_direct_df, spot_df, datetime, creative_id):
     ''' takes web and spot DFs, datetime of specific spot and its creative_id; returns baseline # visits '''
     baseline_window_end = pd.to_datetime(datetime).floor('min')
     baseline_window_start = baseline_window_end - pd.Timedelta(minutes=5)
+    # check if there is an ad between when baseline calc should start and end
+    # if there is, choose the closest consecutive 5-minute interval that doesn't conflict with any ad
+    #print spotsInInterval(baseline_window_start, baseline_window_end, spot_df)
+    #import pdb;pdb.set_trace()
+    while spotsInInterval(baseline_window_start, baseline_window_end, spot_df) != None:
+        baseline_window_end -= pd.Timedelta(minutes=1)
+        baseline_window_start-= pd.Timedelta(minutes=1)
+    # create dataframe for baseline within this interval that now is conflict-free
     baseline_df = web_direct_df[(web_direct_df.datetime >= pd.Timestamp(baseline_window_start)) & (web_direct_df.datetime <= pd.Timestamp(baseline_window_end))]
-
+    baseline = baseline_df['value'].mean()
+    # do the same for lift
+    lift_window_start = pd.to_datetime(datetime) + pd.Timedelta(minutes=1)
+    lift_window_end = lift_window_start + pd.Timedelta(minutes=5)
+    #while spotsInInterval(lift_window_start, lift_window_end, spot_df) != None:
+    #    lift_window_end += pd.Timedelta(minutes=1)
+    #    lift_window_start += pd.Timedelta(minutes=1)
+    print lift_window_start, lift_window_end
+    print spotsInInterval(lift_window_start, lift_window_end, spot_df)
+    lift_df = web_direct_df[(web_direct_df.datetime >= pd.Timestamp(lift_window_start)) & (web_direct_df.datetime <= pd.Timestamp(lift_window_end))]
+    # lift = all visits in lift window - baseline
+    lift = lift_df['value'].sum() - baseline
+    return [baseline, lift]
 
 
 def main():
     # retrieve clean dataframes
     web_df, spot_df, web_direct_df = cleanDataFrames(path_spot_data,path_web_data)
-    # create dictionary {creative_id: spend}
+    # create & populate dictionary {creative_id: spend}
     spend_per_creative = (spot_df.groupby('creative_id')['spend'].agg('sum')).to_dict()
     for key in spend_per_creative:
         spend_per_creative[key] = round(spend_per_creative[key],2)
-    #plt.show()
-    calcBaseline(web_direct_df, spot_df, '2017-11-13 02:12:11+00', '6e69270e444e10a1ec9a2bdfbb739c05')
-    #spots_datetimes_df, spots_datetimes_list = spotsInInterval(datetime_start, datetime_end, spot_df)
-    #spots_datetime = (datetime, creative_id)    
-    # find the minute that the spot airs and round down so as not to include airtime
-    # for spot in spot_datetime:
-    # do calcBaseline, calcLift
+    # create & populate dictionary {(datetime, creative_id): [baseline, lift]}
+    baseline_lift_per_spot = {}
+    print calcBaselineLift(web_direct_df, spot_df, '2017-11-13 02:12:11+00', '6e69270e444e10a1ec9a2bdfbb739c05')
+    spots_datetimes_df, spots_datetimes_list = spotsInInterval('2017-10-16 00:00:00+00','2017-11-14 00:00:00+00', spot_df)
+    #for spot in spots_datetimes_list:
+        #baseline_lift_per_spot[spot] =  
+        
 
 if __name__ == '__main__':
     main()
