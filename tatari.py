@@ -77,8 +77,6 @@ def calcBaseline(web_direct_df, spot_df, datetime, creative_id):
     baseline_window_start = baseline_window_end - pd.Timedelta(minutes=5)
     # check if there is an ad between when baseline calc should start and end
     # if there is, choose the closest consecutive 5-minute interval that doesn't conflict with any ad
-    #print spotsInInterval(baseline_window_start, baseline_window_end, spot_df)
-    #import pdb;pdb.set_trace()
     while spotsInInterval(baseline_window_start, baseline_window_end, spot_df) != None:
         baseline_window_end -= pd.Timedelta(minutes=1)
         baseline_window_start-= pd.Timedelta(minutes=1)
@@ -96,42 +94,32 @@ def calcLift(web_direct_df, spot_df, datetime, creative_id, baseline):
     lift_df = web_direct_df[(web_direct_df.datetime >= pd.Timestamp(lift_window_start)) & (web_direct_df.datetime <= pd.Timestamp(lift_window_end))]
     # find overlaps by calling spotsInInterval (the time delta of 1 second is to ensure that the spot of interest won't count as overlapping itself
     overlaps = spotsInInterval(lift_window_start + pd.Timedelta(seconds=1), lift_window_end, spot_df)[1]
-    # len >= 1, there is more than just the spot of interest in this window
-    if len(overlaps) >= 1:
+    # subtract_overlap will keep track of how much traffic we need to subtract from lift (that we are attributing to this particular ad)
+    subtract_overlap = 0
+    # len > 0, there is more than just the ad of interest in this window
+    if len(overlaps) > 0:
         index = range(len(overlaps))
         overlaps_df = pd.DataFrame(overlaps, columns=['datetime', 'creative_id'])
         overlaps_df = overlaps_df.sort_values(by='datetime',ascending=False)
         overlaps_df.reindex(index)
-        # initialize column for amount we need to subtract from traffic for each spot
-        overlaps_df['subtract_from_traffic'] = [0]*len(overlaps)
         # grab the latest spot (then the 2nd latest, etc...) that overlaps with spot of interest and find time they share
         i = 0
         # initialize overlap_end to be the end of the lift window; this will change throughout iterations
         overlap_end = lift_window_end
         while i < len(overlaps):
+            # start at the LATEST starting ad that overlaps ad of interest
             overlap_start = overlaps_df.iloc[i][0]
             # check if any other overlapping spots also overlap in the same window
             other_overlaps = overlaps_df[(overlaps_df.datetime < overlap_start) & (overlaps_df.datetime + pd.Timedelta(minutes=5) > overlap_end)]
-            print web_direct_df[
-            import pdb;pdb.set_trace()
-            #all_overlaps.append(i)
-            #print all_overlaps
-
-            overlap_
+            if i == 0:
+                len_other_overlaps = len(other_overlaps.index)
+            overlap_traffic = web_direct_df[(web_direct_df.datetime >= overlap_start) & (web_direct_df.datetime < overlap_end)]
+            # assume traffic can be divided evenly between ads that overlap
+            subtract_overlap += (overlap_traffic['value'].sum())*len_other_overlaps/(1+len_other_overlaps)
+            # set the overlap_end for the next iteration to be where we started last time
+            overlap_end = overlap_start
             i += 1
-        #subtract_from_traffic.append(
-        #overlaps_df['subtract_from_traffic'] = 
-    #    print overlaps_df
-    #    print overlaps_df.iloc[i]
-    #lift_window_overlap = 
-
-    #while spotsInInterval(lift_window_start, lift_window_end, spot_df) != None:
-    #    lift_window_end += pd.Timedelta(minutes=1)
-    #    lift_window_start += pd.Timedelta(minutes=1)
-    #print lift_window_start, lift_window_end
-    #print spotsInInterval(lift_window_start, lift_window_end, spot_df)
-    # lift = all visits in lift window - baseline
-    lift = lift_df['value'].sum() - baseline
+    lift = lift_df['value'].sum() - subtract_overlap - baseline
     return lift
 
 
@@ -147,15 +135,12 @@ def main():
         spend_per_creative[key] = round(spend_per_creative[key],2)
     # create & populate dictionary {(datetime, creative_id): [baseline, lift]}
     baseline_lift_per_spot = {}
-    # 2017-10-17 22:38:00+00 --> from 413921, 413925, 413922 on spot_df
     #print spotsInInterval('2017-10-17 22:38:00+00', '2017-10-17 22:44:00+00', spot_df)
     baseline = calcBaseline(web_direct_df, spot_df, '2017-10-17 22:39:16+00','f3483f810d44cef79d90a66ab2da1bf0')
-    calcLift(web_direct_df, spot_df, '2017-10-17 22:39:16+00','f3483f810d44cef79d90a66ab2da1bf0',baseline)
+    lift = calcLift(web_direct_df, spot_df, '2017-10-17 22:39:16+00','f3483f810d44cef79d90a66ab2da1bf0',baseline)
     
     #print calcBaselineLift(web_direct_df, spot_df, '2017-11-13 02:12:11+00', '6e69270e444e10a1ec9a2bdfbb739c05')
     #spots_datetimes_df, spots_datetimes_list = spotsInInterval('2017-10-16 00:00:00+00','2017-11-14 00:00:00+00', spot_df)
-    #for spot in spots_datetimes_list:
-        #baseline_lift_per_spot[spot] =  
         
 
 if __name__ == '__main__':
