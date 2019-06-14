@@ -16,20 +16,20 @@ path_web_data = args.path_web_data
 
 
 def cleanDataFrames(path_spot_data, path_web_data):
-    ''' takes in paths to CSVs and will return Pandas DFs ready for use '''
-    # read CSVs into pandas
-    web_df = pd.read_csv(path_web_data)
-    spot_df = pd.read_csv(path_spot_data)
-    # convert time columns of both DFs to pandas datetime variable
-    web_df['datetime'] = pd.to_datetime(web_df['time'], utc=True)
-    spot_df['datetime'] = pd.to_datetime(spot_df['time'], utc=True)
-    web_df['date'] = web_df['datetime'].dt.date
-    spot_df['date'] = spot_df['datetime'].dt.date
-    web_df.drop('time', axis=1)
-    spot_df.drop('time',axis=1)
-    # create new dataframe with only direct traffic
-    web_direct_df = web_df[web_df.traffic_source == 'direct'][['datetime','value']]
-    return web_df, spot_df, web_direct_df
+     ''' takes in paths to CSVs and will return Pandas DFs ready for use '''
+     # read CSVs into pandas
+     web_df = pd.read_csv(path_web_data)
+     spot_df = pd.read_csv(path_spot_data)
+     # convert time columns of both DFs to pandas datetime variable
+     web_df['datetime'] = pd.to_datetime(web_df['time'], utc=True)
+     spot_df['datetime'] = pd.to_datetime(spot_df['time'], utc=True)
+     web_df['date'] = web_df['datetime'].dt.date
+     spot_df['date'] = spot_df['datetime'].dt.date
+     web_df.drop('time', axis=1)
+     spot_df.drop('time',axis=1)
+     # create new dataframe with only direct traffic
+     web_direct_df = web_df[web_df.traffic_source == 'direct'][['datetime','value']]
+     return web_df, spot_df, web_direct_df
 
 
 def spotsInInterval(datetime_start, datetime_end, spot_df):
@@ -71,7 +71,7 @@ def generateVisitsPlot(datetime_start, datetime_end, web_direct_df, spot_df, fig
     return plot
 
 
-def calcBaselineLift(web_direct_df, spot_df, datetime, creative_id):
+def calcBaseline(web_direct_df, spot_df, datetime, creative_id):
     ''' takes web and spot DFs, datetime of specific spot and its creative_id; returns baseline # visits '''
     baseline_window_end = pd.to_datetime(datetime).floor('min')
     baseline_window_start = baseline_window_end - pd.Timedelta(minutes=5)
@@ -85,19 +85,58 @@ def calcBaselineLift(web_direct_df, spot_df, datetime, creative_id):
     # create dataframe for baseline within this interval that now is conflict-free
     baseline_df = web_direct_df[(web_direct_df.datetime >= pd.Timestamp(baseline_window_start)) & (web_direct_df.datetime <= pd.Timestamp(baseline_window_end))]
     baseline = baseline_df['value'].mean()
-    # do the same for lift
-    lift_window_start = pd.to_datetime(datetime) + pd.Timedelta(minutes=1)
+    return baseline
+
+
+def calcLift(web_direct_df, spot_df, datetime, creative_id, baseline):    
+    ''' takes web and spot DFs, datetime of specific spot and its creative_id; returns lift as measured from baseline '''
+    lift_window_start = pd.Timestamp(datetime)
     lift_window_end = lift_window_start + pd.Timedelta(minutes=5)
+    # check if there are more than 1 spot airing in the lift window
+    lift_df = web_direct_df[(web_direct_df.datetime >= pd.Timestamp(lift_window_start)) & (web_direct_df.datetime <= pd.Timestamp(lift_window_end))]
+    # find overlaps by calling spotsInInterval (the time delta of 1 second is to ensure that the spot of interest won't count as overlapping itself
+    overlaps = spotsInInterval(lift_window_start + pd.Timedelta(seconds=1), lift_window_end, spot_df)[1]
+    # len >= 1, there is more than just the spot of interest in this window
+    if len(overlaps) >= 1:
+        index = range(len(overlaps))
+        overlaps_df = pd.DataFrame(overlaps, columns=['datetime', 'creative_id'])
+        overlaps_df = overlaps_df.sort_values(by='datetime',ascending=False)
+        overlaps_df.reindex(index)
+        # initialize column for amount we need to subtract from traffic for each spot
+        overlaps_df['subtract_from_traffic'] = [0]*len(overlaps)
+        # grab the latest spot (then the 2nd latest, etc...) that overlaps with spot of interest and find time they share
+        i = 0
+        # initialize overlap_end to be the end of the lift window; this will change throughout iterations
+        overlap_end = lift_window_end
+        while i < len(overlaps):
+            overlap_start = overlaps_df.iloc[i][0]
+            # check if any other overlapping spots also overlap in the same window
+            other_overlaps = overlaps_df[(overlaps_df.datetime < overlap_start) & (overlaps_df.datetime + pd.Timedelta(minutes=5) > overlap_end)]
+            print web_direct_df[
+            import pdb;pdb.set_trace()
+            #all_overlaps.append(i)
+            #print all_overlaps
+
+            overlap_
+            i += 1
+        #subtract_from_traffic.append(
+        #overlaps_df['subtract_from_traffic'] = 
+    #    print overlaps_df
+    #    print overlaps_df.iloc[i]
+    #lift_window_overlap = 
+
     #while spotsInInterval(lift_window_start, lift_window_end, spot_df) != None:
     #    lift_window_end += pd.Timedelta(minutes=1)
     #    lift_window_start += pd.Timedelta(minutes=1)
-    print lift_window_start, lift_window_end
-    print spotsInInterval(lift_window_start, lift_window_end, spot_df)
-    lift_df = web_direct_df[(web_direct_df.datetime >= pd.Timestamp(lift_window_start)) & (web_direct_df.datetime <= pd.Timestamp(lift_window_end))]
+    #print lift_window_start, lift_window_end
+    #print spotsInInterval(lift_window_start, lift_window_end, spot_df)
     # lift = all visits in lift window - baseline
     lift = lift_df['value'].sum() - baseline
-    return [baseline, lift]
+    return lift
 
+
+#def cpvGraph():
+#    return graph
 
 def main():
     # retrieve clean dataframes
@@ -108,8 +147,13 @@ def main():
         spend_per_creative[key] = round(spend_per_creative[key],2)
     # create & populate dictionary {(datetime, creative_id): [baseline, lift]}
     baseline_lift_per_spot = {}
-    print calcBaselineLift(web_direct_df, spot_df, '2017-11-13 02:12:11+00', '6e69270e444e10a1ec9a2bdfbb739c05')
-    spots_datetimes_df, spots_datetimes_list = spotsInInterval('2017-10-16 00:00:00+00','2017-11-14 00:00:00+00', spot_df)
+    # 2017-10-17 22:38:00+00 --> from 413921, 413925, 413922 on spot_df
+    #print spotsInInterval('2017-10-17 22:38:00+00', '2017-10-17 22:44:00+00', spot_df)
+    baseline = calcBaseline(web_direct_df, spot_df, '2017-10-17 22:39:16+00','f3483f810d44cef79d90a66ab2da1bf0')
+    calcLift(web_direct_df, spot_df, '2017-10-17 22:39:16+00','f3483f810d44cef79d90a66ab2da1bf0',baseline)
+    
+    #print calcBaselineLift(web_direct_df, spot_df, '2017-11-13 02:12:11+00', '6e69270e444e10a1ec9a2bdfbb739c05')
+    #spots_datetimes_df, spots_datetimes_list = spotsInInterval('2017-10-16 00:00:00+00','2017-11-14 00:00:00+00', spot_df)
     #for spot in spots_datetimes_list:
         #baseline_lift_per_spot[spot] =  
         
